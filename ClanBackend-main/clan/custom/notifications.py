@@ -1,0 +1,3 @@
+NOTIFICATIONS_CONFIG = {
+    
+}

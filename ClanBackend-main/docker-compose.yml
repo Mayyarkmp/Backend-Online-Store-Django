@@ -1,0 +1,84 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    env_file: &app-environment
+      - .env
+    depends_on: &app-depends-on
+      - db
+      - redis
+    command: /app/entrypoints/server.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck/"]
+      interval: 5s
+    ports:
+      - 8000:8000
+    networks: &app-networks
+      - clan
+    volumes: &app-volumes
+      - .:/app
+
+  worker:
+    image: clan-backend:dev.1
+    env_file: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/worker.sh
+    networks: *app-networks
+    volumes: *app-volumes
+  
+  beat:
+    image: clan-backend:dev.1
+    env_file: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/beat.sh
+    networks: *app-networks
+    volumes: *app-volumes
+  
+  daphne:
+    image: clan-backend:dev.1
+    env_file: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/daphne.sh
+    networks: *app-networks
+    volumes: *app-volumes
+
+  redis:
+    restart: unless-stopped
+    image: redis:latest
+    expose:
+      - 6379
+    networks: *app-networks
+
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - server
+      - daphne
+    expose:
+      - 80
+    networks: *app-networks
+
+
+  db:
+    image: postgis/postgis
+    restart: unless-stopped
+    volumes:
+      - ./data/db:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    expose:
+      - 5432
+    networks: *app-networks
+
+networks:
+  clan:
+    driver: bridge

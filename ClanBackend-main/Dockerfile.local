@@ -1,0 +1,4 @@
+FROM clan-backend:dev.2
+COPY --chown=python:python ./entrypoints/dev.sh /app/entrypoints/
+
+RUN chmod +x /app/entrypoints/dev.sh

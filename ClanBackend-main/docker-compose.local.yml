@@ -1,0 +1,106 @@
+services:
+  server:
+    image: clan-backend:dev.3
+    env_file: &app-environment
+      - .env.docker
+    depends_on: &app-depends-on
+      - db
+      - redis
+      - minio
+    command: /app/entrypoints/server.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck/"]
+      interval: 5s
+    ports:
+      - 8000:8000
+    networks: &app-networks
+      - clan
+    volumes: &app-volumes
+      - .:/app:ro
+
+  worker:
+    image: clan-backend:dev.3
+    env_file: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/worker.sh
+    networks: *app-networks
+    volumes: *app-volumes
+  
+  beat:
+    image: clan-backend:dev.3
+    env_file: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/beat.sh
+    networks: *app-networks
+    volumes: *app-volumes
+  
+  daphne:
+    image: clan-backend:dev.3
+    env_file:
+      - .env.docker
+    environment: *app-environment
+    depends_on: *app-depends-on
+    command: /app/entrypoints/daphne.sh
+    networks: *app-networks
+    volumes: *app-volumes
+
+  redis:
+    restart: unless-stopped
+    image: redis:latest
+    expose:
+      - 6379
+    networks: *app-networks
+
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/dev-local.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - server
+      - daphne
+      - minio
+    expose:
+      - 80
+    networks: *app-networks
+
+
+  db:
+    image: postgis/postgis
+    restart: unless-stopped
+    volumes:
+      - ./data/db:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    expose:
+      - 5432
+    networks: *app-networks
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: 'server /data --console-address ":9001"'
+    ports:
+      - 9001:9001
+      - 9000:9000
+    environment:
+        MINIO_ROOT_USER: ROOTNAME
+        MINIO_ROOT_PASSWORD: CHANGEME123
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        MINIO_ACCESS_KEY_FILE: access_key
+        MINIO_SECRET_KEY_FILE: secret_key
+        MINIO_ROOT_USER_FILE: access_key
+        MINIO_ROOT_PASSWORD_FILE: secret_key
+        MINIO_KMS_SECRET_KEY_FILE: kms_master_key
+        MINIO_UPDATE_MINISIGN_PUBKEY: RWTx5Zr1tiHQLwG9keckT0c45M3AGeHD6IvimQHpyRywVWGbP1aVSGav
+        MINIO_CONFIG_ENV_FILE: config.env
+        MC_CONFIG_DIR: /tmp/.mc
+    volumes:
+      - "~/minio/data:/data"
+    networks: *app-networks
+networks:
+  clan:
+    driver: bridge
